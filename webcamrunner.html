@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>RUN — Webcam Endless Runner</title>
+<style>
+  :root{
+    --neon-cyan:#39f2e0;
+    --neon-magenta:#ff3d8e;
+    --neon-amber:#ffb020;
+    --bg-deep:#05060a;
+    --bg-panel:#0c0f16;
+    --line:#1c2230;
+    --text:#eef2f7;
+    --text-dim:#8b94a7;
+    --danger:#ff4e4e;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;width:100%;height:100%;
+    background:var(--bg-deep);
+    color:var(--text);
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+    overflow:hidden;
+    -webkit-user-select:none;user-select:none;
+  }
+  #app{position:fixed;inset:0;}
+  #gameCanvas{position:absolute;inset:0;display:block;}
+
+  /* hidden webcam feed, only its analyzed data is used */
+  #video{
+    position:absolute;
+    width:1px;height:1px;opacity:0;pointer-events:none;
+  }
+
+  .layer{
+    position:absolute;inset:0;
+    display:flex;align-items:center;justify-content:center;
+    flex-direction:column;
+    pointer-events:none;
+  }
+  .layer.interactive{pointer-events:auto;}
+  .hidden{display:none !important;}
+
+  /* ---------- Start / Calibration screens ---------- */
+  .card{
+    background:linear-gradient(180deg,var(--bg-panel),#080a10);
+    border:1px solid var(--line);
+    border-radius:18px;
+    padding:36px 42px;
+    max-width:560px;
+    width:92%;
+    text-align:center;
+    box-shadow:0 0 0 1px rgba(57,242,224,.05), 0 20px 60px rgba(0,0,0,.6);
+  }
+  .title{
+    font-size:2.6rem;
+    font-weight:800;
+    letter-spacing:.04em;
+    margin:0 0 6px;
+    background:linear-gradient(90deg,var(--neon-cyan),var(--neon-magenta));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .subtitle{color:var(--text-dim);margin:0 0 28px;font-size:.95rem;letter-spacing:.02em;}
+
+  .btn{
+    pointer-events:auto;
+    background:linear-gradient(90deg,var(--neon-cyan),#1ecfd6);
+    color:#03110f;
+    border:none;
+    padding:14px 32px;
+    font-size:1.05rem;
+    font-weight:700;
+    border-radius:999px;
+    cursor:pointer;
+    letter-spacing:.03em;
+    transition:transform .15s ease, box-shadow .15s ease;
+    box-shadow:0 8px 24px rgba(57,242,224,.25);
+  }
+  .btn:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(57,242,224,.35);}
+  .btn:active{transform:translateY(0);}
+  .btn.secondary{
+    background:transparent;
+    color:var(--text);
+    border:1px solid var(--line);
+    box-shadow:none;
+  }
+  .btn.secondary:hover{border-color:var(--neon-cyan);color:var(--neon-cyan);}
+  .btn-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:6px;}
+
+  .control-grid{
+    display:grid;grid-template-columns:1fr 1fr;gap:10px;
+    margin:20px 0 26px;text-align:left;
+  }
+  .control-item{
+    background:#080a10;border:1px solid var(--line);border-radius:10px;
+    padding:10px 14px;font-size:.85rem;color:var(--text-dim);
+  }
+  .control-item b{color:var(--text);display:block;font-size:.9rem;margin-bottom:2px;}
+
+  /* ---------- Calibration ---------- */
+  #calibWrap{position:relative;width:min(560px,92vw);aspect-ratio:4/3;border-radius:16px;overflow:hidden;border:1px solid var(--line);background:#000;}
+  #calibCredit{
+    position:absolute;bottom:8px;right:12px;
+    font-size:.7rem;color:rgba(255,255,255,.4);letter-spacing:.03em;
+    pointer-events:none;z-index:2;
+  }
+  #startCredit{
+    position:absolute;bottom:14px;right:18px;
+    font-size:.7rem;color:var(--text-dim);letter-spacing:.03em;
+    opacity:.6;
+  }
+  #skeletonCanvas{position:absolute;inset:0;width:100%;height:100%;}
+  #calibStatus{
+    margin-top:18px;font-size:1rem;color:var(--text-dim);
+    display:flex;align-items:center;gap:10px;justify-content:center;
+  }
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--danger);transition:background .2s;}
+  .dot.good{background:#33d17a;box-shadow:0 0 12px #33d17a;}
+
+  /* ---------- HUD ---------- */
+  #hud{
+    position:absolute;top:0;left:0;right:0;
+    display:flex;justify-content:space-between;align-items:flex-start;
+    padding:18px 22px;pointer-events:none;
+  }
+  .hud-block{
+    background:rgba(8,10,16,.55);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:8px 16px;
+    backdrop-filter:blur(6px);
+    font-variant-numeric:tabular-nums;
+  }
+  .hud-label{font-size:.65rem;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;}
+  .hud-value{font-size:1.4rem;font-weight:800;color:var(--neon-cyan);}
+  #powerFlash{
+    position:absolute;top:18px;left:50%;transform:translateX(-50%);
+    font-size:.8rem;color:var(--neon-amber);letter-spacing:.05em;
+    background:rgba(8,10,16,.55);border:1px solid var(--line);border-radius:10px;
+    padding:6px 14px;opacity:0;transition:opacity .3s;
+  }
+
+  #trackerThumb{
+    position:absolute;bottom:16px;right:16px;
+    width:120px;height:90px;border-radius:10px;overflow:hidden;
+    border:1px solid var(--line);background:#000;
+    opacity:.85;
+  }
+  #trackerThumb canvas{width:100%;height:100%;}
+  #trackerThumb .label{
+    position:absolute;bottom:2px;left:6px;font-size:.6rem;color:var(--text-dim);
+  }
+
+  /* ---------- Game Over ---------- */
+  .stat-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);font-size:.95rem;}
+  .stat-row span:last-child{font-weight:700;color:var(--neon-cyan);}
+
+  #pauseHint{
+    position:absolute;bottom:18px;left:50%;transform:translateX(-50%);
+    font-size:.75rem;color:var(--text-dim);letter-spacing:.03em;
+    background:rgba(8,10,16,.5);padding:6px 14px;border-radius:10px;border:1px solid var(--line);
+  }
+
+  #fatalError{
+    position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    background:rgba(5,6,10,.92);z-index:50;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="gameCanvas"></canvas>
+  <video id="video" autoplay playsinline muted></video>
+
+  <!-- START SCREEN -->
+  <div id="screenStart" class="layer interactive">
+    <div class="card">
+      <h1 class="title">RUN</h1>
+      <p class="subtitle">A camera-controlled endless runner. Your body is the controller.</p>
+      <div class="control-grid">
+        <div class="control-item"><b>Lean left / right</b>switch lanes</div>
+        <div class="control-item"><b>Jump</b>hop over low barriers</div>
+        <div class="control-item"><b>Squat</b>duck under overhead barriers</div>
+        <div class="control-item"><b>No webcam?</b>arrow keys / space work too</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="btnCalibrate">Enable camera &amp; calibrate</button>
+        <button class="btn secondary" id="btnSkip">Skip — use keyboard only</button>
+      </div>
+      <div id="startCredit">Made by Muzammil</div>
+    </div>
+  </div>
+
+  <!-- CALIBRATION SCREEN -->
+  <div id="screenCalib" class="layer interactive hidden">
+    <div class="card">
+      <h1 class="title" style="font-size:1.6rem;">Stand in frame</h1>
+      <p class="subtitle">Step back so your whole upper body is visible, then hold still.</p>
+      <div id="calibWrap">
+        <div id="calibCredit">Made by Muzammil</div>
+        <canvas id="skeletonCanvas"></canvas>
+      </div>
+      <div id="calibStatus"><span class="dot" id="calibDot"></span><span id="calibText">Looking for you…</span></div>
+      <div class="btn-row" style="margin-top:20px;">
+        <button class="btn" id="btnStartGame" disabled>Start running</button>
+        <button class="btn secondary" id="btnRecalibrate">Recalibrate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div class="hud-block">
+      <div class="hud-label">Score</div>
+      <div class="hud-value" id="hudScore">0</div>
+    </div>
+    <div class="hud-block">
+      <div class="hud-label">Best</div>
+      <div class="hud-value" id="hudBest">0</div>
+    </div>
+  </div>
+  <div id="powerFlash"></div>
+  <div id="pauseHint" class="hidden">P / step back = pause</div>
+
+  <div id="trackerThumb" class="hidden">
+    <canvas id="thumbCanvas"></canvas>
+    <div class="label">tracking</div>
+  </div>
+
+  <!-- PAUSE OVERLAY -->
+  <div id="screenPause" class="layer interactive hidden">
+    <div class="card">
+      <h1 class="title" style="font-size:1.8rem;">Paused</h1>
+      <div class="btn-row">
+        <button class="btn" id="btnResume">Resume</button>
+        <button class="btn secondary" id="btnQuitToMenu">Quit to menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GAME OVER -->
+  <div id="screenOver" class="layer interactive hidden">
+    <div class="card">
+      <h1 class="title" style="font-size:2rem;">Wiped out</h1>
+      <div class="stat-row"><span>Score</span><span id="overScore">0</span></div>
+      <div class="stat-row"><span>Best</span><span id="overBest">0</span></div>
+      <div class="btn-row" style="margin-top:22px;">
+        <button class="btn" id="btnRetry">Run again</button>
+        <button class="btn secondary" id="btnMenu">Main menu</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="fatalError">
+    <div class="card">
+      <h1 class="title" style="font-size:1.6rem;color:var(--danger);-webkit-text-fill-color:var(--danger);">Camera unavailable</h1>
+      <p class="subtitle" id="fatalMsg">Couldn't access your webcam. This usually means the page isn't served over http://localhost or https — camera access is blocked on plain file:// pages by the browser.</p>
+      <div class="btn-row">
+        <button class="btn" id="btnFatalKeyboard">Play with keyboard instead</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+<script>
+(function(){
+"use strict";
+
+/* =========================================================================
+   CONSTANTS
+   ========================================================================= */
+const LANES = [-1.3, 1.3];
+const LANE_SWITCH_SPEED = 12;      // how fast the runner slides between lanes
+const BASE_SPEED = 16;             // world scroll speed, units/sec
+const MAX_SPEED = 36;
+const SPEED_RAMP = 0.055;          // speed gained per second survived (slower = longer, gentler runs)
+const SPAWN_Z = -70;               // where obstacles spawn (far ahead)
+const DESPAWN_Z = 12;              // where obstacles are removed (behind player)
+const PLAYER_Z = 0;
+const JUMP_HEIGHT = 2.6;
+const JUMP_DURATION = 0.48;        // seconds
+const DUCK_DURATION_MIN = 0.35;
+
+/* =========================================================================
+   DOM
+   ========================================================================= */
+const $ = (id)=>document.getElementById(id);
+const screenStart   = $('screenStart');
+const screenCalib   = $('screenCalib');
+const screenPause   = $('screenPause');
+const screenOver    = $('screenOver');
+const fatalError    = $('fatalError');
+const hud           = $('hud');
+const pauseHint     = $('pauseHint');
+const trackerThumb  = $('trackerThumb');
+const videoEl       = $('video');
+const skeletonCanvas= $('skeletonCanvas');
+const thumbCanvas   = $('thumbCanvas');
+const powerFlash    = $('powerFlash');
+
+const skelCtx  = skeletonCanvas.getContext('2d');
+const thumbCtx = thumbCanvas.getContext('2d');
+
+let BEST = Number(localStorage.getItem('runner_best')||0);
+$('hudBest').textContent = BEST;
+
+/* =========================================================================
+   INPUT STATE (fed by either MediaPipe or keyboard)
+   ========================================================================= */
+const input = {
+  lane: 0,          // 0,1 current target lane index (start left)
+  jumpRequest: false,
+  duckHeld: false,
+  pauseToggleRequest: false,
+  usingCamera: false
+};
+
+/* ---------------- Keyboard fallback ---------------- */
+window.addEventListener('keydown', (e)=>{
+  if(e.repeat) return;
+  switch(e.code){
+    case 'ArrowLeft': case 'KeyA': input.lane = Math.max(0, input.lane-1); break;
+    case 'ArrowRight': case 'KeyD': input.lane = Math.min(1, input.lane+1); break;
+    case 'ArrowUp': case 'Space': input.jumpRequest = true; break;
+    case 'ArrowDown': case 'KeyS': input.duckHeld = true; break;
+    case 'KeyP': input.pauseToggleRequest = true; break;
+  }
+});
+window.addEventListener('keyup', (e)=>{
+  if(e.code==='ArrowDown' || e.code==='KeyS') input.duckHeld = false;
+});
+
+/* =========================================================================
+   MEDIAPIPE POSE TRACKING
+   ========================================================================= */
+let poseInstance = null;
+let mpCamera = null;
+let calibrated = false;
+let calibCenterX = 0.5;      // normalized shoulder-center x at rest
+let calibHipY = 0.5;         // normalized hip y at rest (standing)
+let goodFramesInRow = 0;
+const CALIB_FRAMES_NEEDED = 30;
+
+// smoothing state
+let smoothX = 0.5;
+let smoothHipY = 0.5;
+let prevHipY = 0.5;
+let hipVelocity = 0;
+let lastFrameTime = performance.now();
+
+// gesture debouncing
+let lastJumpTime = -10;
+let duckActive = false;
+let duckStartTime = 0;
+let duckJustEndedUntil = 0; // suppresses jump misfires caused by standing back up from a squat
+let velocityBuffer = [];
+const VELOCITY_BUFFER_SIZE = 2; // shorter buffer = less added lag
+let leanDeadzone = 0.026;    // fraction of frame width before a lean gesture fires (lower = easier/more sensitive)
+let leanRecenterZone = 0.018; // smaller than leanDeadzone so there's no dead gap between 'triggered' and 're-armed'
+let leanState = 'center';   // 'center' | 'left' | 'right' — tracks current lean gesture
+let lastLaneChangeTime = -10;
+let laneChangeCooldown = 0.22; // seconds, extra guard against jittery double-fires (shortened for snappier repeats)
+let squatThreshold = 0.038;  // fraction of frame height hip must drop to count as squat (lower = easier to trigger)
+let jumpVelocityThreshold = -0.55; // normalized units/sec, negative = moving up in image (lower = more sensitive/faster trigger)
+
+function drawSkeleton(ctx, landmarks, dx, dy, dw, dh, color){
+  const conn = [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]];
+  ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.fillStyle = color;
+  conn.forEach(([a,b])=>{
+    const p1=landmarks[a], p2=landmarks[b];
+    if(!p1||!p2) return;
+    if((p1.visibility??1) < 0.4 || (p2.visibility??1) < 0.4) return;
+    ctx.beginPath();
+    ctx.moveTo(dx+p1.x*dw, dy+p1.y*dh);
+    ctx.lineTo(dx+p2.x*dw, dy+p2.y*dh);
+    ctx.stroke();
+  });
+  [11,12,23,24].forEach(i=>{
+    const p = landmarks[i]; if(!p) return;
+    ctx.beginPath(); ctx.arc(dx+p.x*dw,dy+p.y*dh,5,0,Math.PI*2); ctx.fill();
+  });
+}
+
+function onPoseResults(results){
+  const now = performance.now();
+  const dt = Math.max(0.001,(now-lastFrameTime)/1000);
+  lastFrameTime = now;
+
+  const lm = results.poseLandmarks;
+  const targetCanvas = (gameState==='calibrating') ? skeletonCanvas : thumbCanvas;
+  const targetCtx = (gameState==='calibrating') ? skelCtx : thumbCtx;
+  const w = targetCanvas.width, h = targetCanvas.height;
+
+  // preserve the real camera aspect ratio instead of stretching it to fill
+  // the box — stretching was throwing off how "aligned" the feed looked
+  const iw = videoEl.videoWidth || 480, ih = videoEl.videoHeight || 360;
+  const fitScale = Math.min(w/iw, h/ih);
+  const dw = iw*fitScale, dh = ih*fitScale;
+  const dx = (w-dw)/2, dy = (h-dh)/2;
+
+  targetCtx.save();
+  targetCtx.clearRect(0,0,w,h);
+  targetCtx.fillStyle = '#000';
+  targetCtx.fillRect(0,0,w,h);
+  // mirror draw so it feels like a mirror
+  targetCtx.translate(w,0); targetCtx.scale(-1,1);
+  if(gameState==='calibrating'){
+    targetCtx.filter = 'brightness(1.7) contrast(1.15) saturate(1.05)';
+    targetCtx.drawImage(results.image,dx,dy,dw,dh);
+    targetCtx.filter = 'none';
+  }
+  // during gameplay we skip drawing the full video frame into the corner
+  // thumbnail entirely (only the skeleton dots below) — that continuous
+  // full-frame blit was real overhead we don't need once calibrated
+
+  if(!lm){
+    targetCtx.restore();
+    if(gameState==='calibrating'){ goodFramesInRow = 0; updateCalibUI(false); }
+    return;
+  }
+
+  const lShoulder = lm[11], rShoulder = lm[12], lHip = lm[23], rHip = lm[24];
+  const visOK = [lShoulder,rShoulder,lHip,rHip].every(p=>p && (p.visibility??1) > 0.32);
+
+  drawSkeleton(targetCtx, lm, dx, dy, dw, dh, visOK ? '#33d17a' : '#ff4e4e');
+  targetCtx.restore();
+
+  if(!visOK){
+    if(gameState==='calibrating'){ goodFramesInRow = 0; updateCalibUI(false); }
+    return;
+  }
+
+  const shoulderCenterX = (lShoulder.x + rShoulder.x)/2;
+  const hipY = (lHip.y + rHip.y)/2;
+
+  // exponential smoothing — lean (x) is smoothed more to resist jitter,
+  // hip vertical (used for jump detection) is smoothed far less so jumps
+  // register almost immediately instead of feeling delayed
+  const SMOOTH_X = 0.5;
+  const SMOOTH_Y = 0.75;
+  smoothX = smoothX + (shoulderCenterX - smoothX)*SMOOTH_X;
+  smoothHipY = smoothHipY + (hipY - smoothHipY)*SMOOTH_Y;
+  hipVelocity = (smoothHipY - prevHipY)/dt;
+  prevHipY = smoothHipY;
+  velocityBuffer.push(hipVelocity);
+  if(velocityBuffer.length > VELOCITY_BUFFER_SIZE) velocityBuffer.shift();
+  const avgVelocity = velocityBuffer.reduce((a,b)=>a+b,0)/velocityBuffer.length;
+
+  if(gameState==='calibrating'){
+    goodFramesInRow++;
+    updateCalibUI(true, goodFramesInRow/CALIB_FRAMES_NEEDED);
+    if(goodFramesInRow >= CALIB_FRAMES_NEEDED){
+      calibCenterX = smoothX;
+      calibHipY = smoothHipY;
+      calibrated = true;
+      $('btnStartGame').disabled = false;
+      $('calibText').textContent = 'Calibrated — you\'re good to go';
+    }
+    return;
+  }
+
+  if(gameState!=='playing') return;
+
+  // --- lane switching via lean (edge-triggered, not continuous) ---
+  // Because the webcam feed is a mirror of the player, landmark x decreasing
+  // corresponds to the player's real right side.
+  const offset = smoothX - calibCenterX;
+  const nowSec = now/1000;
+
+  if(leanState !== 'right' && offset < -leanDeadzone){
+    if(nowSec - lastLaneChangeTime > laneChangeCooldown){
+      input.lane = Math.min(1, input.lane+1);
+      lastLaneChangeTime = nowSec;
+    }
+    leanState = 'right';
+  } else if(leanState !== 'left' && offset > leanDeadzone){
+    if(nowSec - lastLaneChangeTime > laneChangeCooldown){
+      input.lane = Math.max(0, input.lane-1);
+      lastLaneChangeTime = nowSec;
+    }
+    leanState = 'left';
+  } else if(Math.abs(offset) < leanRecenterZone){
+    // only re-arms once the player has actually returned near center
+    leanState = 'center';
+  }
+
+  // --- squat / duck: sustained hip drop (checked BEFORE jump so we can
+  // suppress the jump trigger that the stand-up motion itself would cause) ---
+  const dropped = (smoothHipY - calibHipY) > squatThreshold;
+  if(dropped && !duckActive){ duckActive = true; duckStartTime = now; }
+  if(!dropped && duckActive){
+    duckActive = false;
+    duckJustEndedUntil = nowSec + 0.45; // standing back up looks like a jump to the velocity check — ignore it briefly
+  }
+  input.duckHeld = duckActive;
+
+  // --- jump: fast upward hip motion, but not while ducking or just after standing up from one ---
+  if(!duckActive && nowSec > duckJustEndedUntil &&
+     avgVelocity < jumpVelocityThreshold && (nowSec - lastJumpTime) > 0.55){
+    input.jumpRequest = true;
+    lastJumpTime = nowSec;
+  }
+
+  // --- step back = pause (hip suddenly smaller apparent height -> approximate via shoulder-hip distance shrinking) ---
+  // Simplified & optional: skipped for reliability; keyboard P is the dependable pause control.
+}
+
+function updateCalibUI(ok, progress){
+  $('calibDot').classList.toggle('good', ok);
+  if(ok){
+    $('calibText').textContent = progress>=1 ? 'Calibrated!' : `Hold still… ${Math.round(progress*100)}%`;
+  } else {
+    $('calibText').textContent = 'Looking for you — step back so your shoulders & hips are visible';
+    goodFramesInRow = 0;
+  }
+}
+
+async function initCamera(){
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({video:{width:480,height:360}, audio:false});
+    videoEl.srcObject = stream;
+    await videoEl.play();
+  } catch(err){
+    showFatal(err);
+    throw err;
+  }
+
+  poseInstance = new Pose({locateFile:(file)=>`https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`});
+  poseInstance.setOptions({
+    modelComplexity:0,
+    smoothLandmarks:true,
+    minDetectionConfidence:0.5,
+    minTrackingConfidence:0.4
+  });
+  poseInstance.onResults(onPoseResults);
+
+  mpCamera = new Camera(videoEl, {
+    onFrame: async ()=>{ await poseInstance.send({image:videoEl}); },
+    width:480, height:360
+  });
+  mpCamera.start();
+  input.usingCamera = true;
+}
+
+function showFatal(err){
+  console.error(err);
+  fatalError.style.display='flex';
+  $('fatalMsg').textContent = 'Couldn\'t access your webcam ('+(err && err.message ? err.message : 'unknown error')+'). Make sure this page is running from http://localhost, a permission prompt was allowed, and no other app is using the camera.';
+}
+
+/* =========================================================================
+   THREE.JS SCENE
+   ========================================================================= */
+const canvas = $('gameCanvas');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8fd0f0);
+scene.fog = new THREE.FogExp2(0x9fd8f5, 0.012);
+
+const camera = new THREE.PerspectiveCamera(62, window.innerWidth/window.innerHeight, 0.1, 200);
+camera.position.set(0, 4.4, 8.5);
+camera.lookAt(0,1.6,-10);
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// lights — bright outdoor daylight setup
+const hemi = new THREE.HemisphereLight(0xbfe3ff, 0x5a8f4a, 0.85);
+scene.add(hemi);
+const key = new THREE.DirectionalLight(0xfff3d6, 1.35);
+key.position.set(-14,22,10);
+key.castShadow = true;
+key.shadow.mapSize.set(1024,1024);
+key.shadow.camera.left = -20; key.shadow.camera.right = 20;
+key.shadow.camera.top = 20; key.shadow.camera.bottom = -20;
+scene.add(key);
+const rim1 = new THREE.PointLight(0x39f2e0, 0.6, 20);
+rim1.position.set(-4,3,-6); scene.add(rim1);
+const rim2 = new THREE.PointLight(0xff3d8e, 0.6, 20);
+rim2.position.set(4,3,-14); scene.add(rim2);
+
+// sun — cheap sprite glow + small bright core (no extra draw-call heavy geometry)
+function makeGlowTexture(inner, outer){
+  const size=128;
+  const c = document.createElement('canvas'); c.width=c.height=size;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2);
+  g.addColorStop(0, inner); g.addColorStop(1, outer);
+  ctx.fillStyle = g; ctx.fillRect(0,0,size,size);
+  return new THREE.CanvasTexture(c);
+}
+const sunGlowTex = makeGlowTexture('rgba(255,250,225,0.95)','rgba(255,250,225,0)');
+const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({map:sunGlowTex, transparent:true, depthWrite:false}));
+sunSprite.scale.set(46,46,1);
+sunSprite.position.set(-26,24,-95);
+scene.add(sunSprite);
+const sunCore = new THREE.Mesh(new THREE.SphereGeometry(2, 10, 10), new THREE.MeshBasicMaterial({color:0xfff8e0}));
+sunCore.position.copy(sunSprite.position);
+scene.add(sunCore);
+
+// a few cheap cloud sprites (soft white puffs, not geometry)
+const cloudTex = makeGlowTexture('rgba(255,255,255,0.9)','rgba(255,255,255,0)');
+const cloudMat = new THREE.SpriteMaterial({map:cloudTex, transparent:true, depthWrite:false, opacity:0.8});
+[[-18,20,-60],[10,23,-80],[-6,18,-40],[20,21,-110]].forEach(([x,y,z])=>{
+  const cloud = new THREE.Sprite(cloudMat);
+  cloud.scale.set(18,9,1);
+  cloud.position.set(x,y,z);
+  scene.add(cloud);
+});
+
+// ground: narrow road strip + wide grass beneath/around it
+const groundMat = new THREE.MeshStandardMaterial({color:0x30343f, roughness:0.9, metalness:0.05});
+const groundGeo = new THREE.PlaneGeometry(7, 40);
+const grassMat = new THREE.MeshStandardMaterial({color:0x4a9142, roughness:1});
+const grassGeo = new THREE.PlaneGeometry(30, 40);
+const groundTiles = [];
+const grassTiles = [];
+for(let i=0;i<3;i++){
+  const grass = new THREE.Mesh(grassGeo, grassMat);
+  grass.rotation.x = -Math.PI/2;
+  grass.position.set(0, -0.02, -i*40 + 20);
+  grass.receiveShadow = true;
+  scene.add(grass);
+  grassTiles.push(grass);
+
+  const g = new THREE.Mesh(groundGeo, groundMat);
+  g.rotation.x = -Math.PI/2;
+  g.position.set(0, 0, -i*40 + 20);
+  g.receiveShadow = true;
+  scene.add(g);
+  groundTiles.push(g);
+}
+// lane markers (neon strips)
+const stripMat = new THREE.MeshBasicMaterial({color:0x39f2e0, transparent:true, opacity:0.55});
+const laneStrips = [];
+for(let i=0;i<20;i++){
+  const s = new THREE.Mesh(new THREE.BoxGeometry(0.08,0.02,1.4), stripMat);
+  s.position.set(0, 0.01, 10 - i*5);
+  scene.add(s);
+  laneStrips.push(s);
+}
+// low curbs marking the road edge (short, so they don't block the sky like the old tunnel walls did)
+function makeWallSet(centerZ){
+  const group = new THREE.Group();
+  group.position.z = centerZ;
+  const wallMat = new THREE.MeshStandardMaterial({color:0x2a2e38, roughness:0.8});
+  const trimMat = new THREE.MeshBasicMaterial({color:0xff3d8e});
+  [-3.6,3.6].forEach(x=>{
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(0.3,0.45,40), wallMat);
+    wall.position.set(x, 0.22, 0);
+    group.add(wall);
+    const trim = new THREE.Mesh(new THREE.BoxGeometry(0.32,0.05,40), trimMat);
+    trim.position.set(x, 0.46, 0);
+    group.add(trim);
+  });
+  scene.add(group);
+  return group;
+}
+const wallSets = [makeWallSet(20), makeWallSet(-20), makeWallSet(-60)];
+
+// trees along both sides — InstancedMesh keeps this to 2 draw calls total
+// no matter how many trees exist, so it stays cheap even on weaker laptops
+const TREE_COUNT = 36;
+const TREE_SPACING = 9;
+const trunkGeo = new THREE.CylinderGeometry(0.12,0.16,1.6,6);
+const trunkMat = new THREE.MeshStandardMaterial({color:0x5a3d24, roughness:0.9});
+const trunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, TREE_COUNT);
+trunkMesh.castShadow = true;
+scene.add(trunkMesh);
+
+const foliageGeo = new THREE.ConeGeometry(1.1,2.2,7);
+const foliageMat = new THREE.MeshStandardMaterial({color:0x2f7d3a, roughness:0.85});
+const foliageMesh = new THREE.InstancedMesh(foliageGeo, foliageMat, TREE_COUNT);
+foliageMesh.castShadow = true;
+scene.add(foliageMesh);
+
+const treeData = [];
+const dummy = new THREE.Object3D();
+for(let i=0;i<TREE_COUNT;i++){
+  const side = i%2===0 ? -1 : 1;
+  const x = side*(6 + Math.random()*3.5);
+  const z = 20 - Math.floor(i/2)*TREE_SPACING - Math.random()*2;
+  const scale = 0.8 + Math.random()*0.5;
+  treeData.push({x, z, scale});
+}
+function layoutTrees(){
+  treeData.forEach((t,i)=>{
+    dummy.position.set(t.x, 0.8*t.scale, t.z);
+    dummy.scale.set(t.scale,t.scale,t.scale);
+    dummy.rotation.y = (t.x*7.3 + t.z*3.1) % 6.28; // cheap deterministic "random" rotation
+    dummy.updateMatrix();
+    trunkMesh.setMatrixAt(i, dummy.matrix);
+
+    dummy.position.set(t.x, (1.6+1.1)*t.scale, t.z);
+    dummy.updateMatrix();
+    foliageMesh.setMatrixAt(i, dummy.matrix);
+  });
+  trunkMesh.instanceMatrix.needsUpdate = true;
+  foliageMesh.instanceMatrix.needsUpdate = true;
+}
+layoutTrees();
+
+/* ---------------- Player (stylized blocky runner) ---------------- */
+const player = new THREE.Group();
+const skin = new THREE.MeshStandardMaterial({color:0xffc999, roughness:0.6});
+const suit = new THREE.MeshStandardMaterial({color:0x39f2e0, roughness:0.4, metalness:0.2});
+const suitDark = new THREE.MeshStandardMaterial({color:0x0d3f3c, roughness:0.5});
+
+const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62,0.72,0.36), suit);
+torso.position.y = 1.15; torso.castShadow = true; player.add(torso);
+const head = new THREE.Mesh(new THREE.SphereGeometry(0.26,16,16), skin);
+head.position.y = 1.75; head.castShadow = true; player.add(head);
+const hip = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.3,0.34), suitDark);
+hip.position.y = 0.72; player.add(hip);
+
+function makeLimb(color, len){
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, len, 8), color);
+  m.castShadow = true;
+  return m;
+}
+const legL = makeLimb(suitDark, 0.6); legL.position.set(-0.16, 0.35, 0);
+const legR = makeLimb(suitDark, 0.6); legR.position.set( 0.16, 0.35, 0);
+const armL = makeLimb(suit, 0.55); armL.position.set(-0.42, 1.15, 0);
+const armR = makeLimb(suit, 0.55); armR.position.set( 0.42, 1.15, 0);
+player.add(legL,legR,armL,armR);
+
+player.position.set(LANES[0], 0, PLAYER_Z);
+scene.add(player);
+
+/* =========================================================================
+   OBSTACLES
+   ========================================================================= */
+const OBSTACLE_TYPES = {
+  LOW:   'low',    // jump over
+  HIGH:  'high',   // duck under
+  BLOCK: 'block'   // must switch lanes (full height)
+};
+
+const obstacleMat = {
+  low:   new THREE.MeshStandardMaterial({color:0xffb020, roughness:0.5}),
+  high:  new THREE.MeshStandardMaterial({color:0xff3d8e, roughness:0.5}),
+  block: new THREE.MeshStandardMaterial({color:0x2b3345, roughness:0.6, metalness:0.3})
+};
+
+// shared geometry per type (created once — reused by every instance of that type)
+const obstacleGeo = {
+  low:   new THREE.BoxGeometry(1.5, 0.7, 0.5),
+  high:  new THREE.BoxGeometry(1.5, 0.5, 0.5),
+  block: new THREE.BoxGeometry(1.5, 2.2, 0.6)
+};
+
+// object pool: pre-built meshes reused for the life of the game instead of
+// creating/destroying geometry every spawn (avoids GC-spike stutter)
+const OBSTACLE_POOL_SIZE = 8;
+const obstaclePools = {low:[], high:[], block:[]};
+Object.keys(obstacleGeo).forEach(type=>{
+  for(let i=0;i<OBSTACLE_POOL_SIZE;i++){
+    const mesh = new THREE.Mesh(obstacleGeo[type], obstacleMat[type]);
+    mesh.castShadow = true;
+    mesh.visible = false;
+    scene.add(mesh);
+    obstaclePools[type].push(mesh);
+  }
+});
+
+function acquireObstacleMesh(type){
+  const pool = obstaclePools[type];
+  for(let i=0;i<pool.length;i++){
+    if(!pool[i].visible){ pool[i].visible = true; return pool[i]; }
+  }
+  // pool exhausted (shouldn't normally happen) — grow it as a safety net
+  const mesh = new THREE.Mesh(obstacleGeo[type], obstacleMat[type]);
+  mesh.castShadow = true; mesh.visible = true;
+  scene.add(mesh);
+  pool.push(mesh);
+  return mesh;
+}
+function releaseObstacleMesh(mesh){
+  mesh.visible = false;
+}
+
+let activeObstacles = []; // {mesh, lane, type, z}
+let spawnTimer = 0;
+let spawnInterval = 1.7;
+
+function spawnObstaclePattern(){
+  // choose 1 lane to block with a passable obstacle, sometimes 2
+  const laneIdx = Math.floor(Math.random()*2);
+  const roll = Math.random();
+  let type = OBSTACLE_TYPES.LOW;
+  if(roll < 0.34) type = OBSTACLE_TYPES.LOW;
+  else if(roll < 0.67) type = OBSTACLE_TYPES.HIGH;
+  else type = OBSTACLE_TYPES.BLOCK;
+
+  const mesh = acquireObstacleMesh(type);
+  let y = 0;
+  if(type===OBSTACLE_TYPES.LOW) y = 0.35;
+  if(type===OBSTACLE_TYPES.HIGH) y = 1.9; // high enough to duck under
+  if(type===OBSTACLE_TYPES.BLOCK) y = 1.1;
+  mesh.position.set(LANES[laneIdx], y, SPAWN_Z);
+  activeObstacles.push({mesh, lane:laneIdx, type, z:SPAWN_Z});
+
+  // occasionally add a second obstacle in a different lane (never blocking every lane)
+  if(Math.random() < 0.22){
+    let lane2 = 1 - laneIdx;
+    let type2 = Math.random()<0.5 ? OBSTACLE_TYPES.LOW : OBSTACLE_TYPES.HIGH;
+    const mesh2 = acquireObstacleMesh(type2);
+    let y2 = type2===OBSTACLE_TYPES.LOW ? 0.35 : 1.9;
+    mesh2.position.set(LANES[lane2], y2, SPAWN_Z);
+    activeObstacles.push({mesh:mesh2, lane:lane2, type:type2, z:SPAWN_Z});
+  }
+}
+
+function clearObstacles(){
+  activeObstacles.forEach(o=>releaseObstacleMesh(o.mesh));
+  activeObstacles = [];
+}
+
+/* =========================================================================
+   GAME STATE
+   ========================================================================= */
+let gameState = 'start'; // start | calibrating | playing | paused | over
+let score = 0;
+let speed = BASE_SPEED;
+let curLaneX = LANES[0];
+let targetLaneIdx = 0;
+
+let jumping = false, jumpT = 0;
+let ducking = false;
+
+let animTime = 0;
+let clock = new THREE.Clock();
+
+function resetGame(){
+  clearObstacles();
+  score = 0;
+  speed = BASE_SPEED;
+  input.lane = 0;
+  targetLaneIdx = 0;
+  curLaneX = LANES[0];
+  jumping = false; jumpT = 0;
+  ducking = false;
+  duckActive = false;
+  duckJustEndedUntil = 0;
+  velocityBuffer = [];
+  leanState = 'center';
+  lastLaneChangeTime = -10;
+  spawnTimer = 0;
+  spawnInterval = 1.35;
+  player.position.set(LANES[0], 0, PLAYER_Z);
+  torso.rotation.x = 0;
+}
+
+function startPlaying(){
+  resetGame();
+  gameState = 'playing';
+  hud.classList.remove('hidden');
+  if(input.usingCamera){ pauseHint.classList.remove('hidden'); trackerThumb.classList.remove('hidden'); }
+  screenStart.classList.add('hidden');
+  screenCalib.classList.add('hidden');
+  screenOver.classList.add('hidden');
+  screenPause.classList.add('hidden');
+  clock.start();
+}
+
+function endGame(){
+  gameState = 'over';
+  hud.classList.add('hidden');
+  pauseHint.classList.add('hidden');
+  trackerThumb.classList.add('hidden');
+  const finalScore = Math.floor(score);
+  if(finalScore > BEST){
+    BEST = finalScore;
+    localStorage.setItem('runner_best', BEST);
+  }
+  $('overScore').textContent = finalScore;
+  $('overBest').textContent = BEST;
+  $('hudBest').textContent = BEST;
+  screenOver.classList.remove('hidden');
+}
+
+function flashPower(text){
+  powerFlash.textContent = text;
+  powerFlash.style.opacity = 1;
+  setTimeout(()=>{powerFlash.style.opacity = 0;}, 700);
+}
+
+/* =========================================================================
+   MAIN LOOP
+   ========================================================================= */
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(0.05, clock.getDelta());
+
+  if(gameState==='playing'){
+    updateGame(dt);
+  }
+  renderer.render(scene, camera);
+}
+
+function updateGame(dt){
+  animTime += dt;
+
+  // pause handling
+  if(input.pauseToggleRequest){
+    input.pauseToggleRequest = false;
+    pauseGame();
+    return;
+  }
+
+  // speed ramps up over time
+  speed = Math.min(MAX_SPEED, speed + SPEED_RAMP*dt);
+  score += dt * (speed*0.6);
+  $('hudScore').textContent = Math.floor(score);
+
+  // lane movement (smoothly slide to input.lane)
+  targetLaneIdx = input.lane;
+  const targetX = LANES[targetLaneIdx];
+  curLaneX += (targetX - curLaneX) * Math.min(1, LANE_SWITCH_SPEED*dt);
+  player.position.x = curLaneX;
+  player.rotation.z = (targetX - curLaneX) * -0.25; // subtle lean into turn
+
+  // jump
+  if(input.jumpRequest && !jumping){
+    jumping = true; jumpT = 0;
+    input.jumpRequest = false;
+  } else {
+    input.jumpRequest = false;
+  }
+  if(jumping){
+    jumpT += dt;
+    const p = Math.min(1, jumpT/JUMP_DURATION);
+    const h = Math.sin(p*Math.PI) * JUMP_HEIGHT;
+    player.position.y = h;
+    if(p>=1){ jumping = false; player.position.y = 0; }
+  }
+
+  // duck
+  ducking = input.duckHeld && !jumping;
+  torso.rotation.x = ducking ? -0.9 : 0;
+  head.position.y = ducking ? 1.35 : 1.75;
+  player.scale.y = ducking ? 0.68 : 1;
+
+  // running leg/arm animation
+  const runCycle = animTime * (speed*0.55);
+  if(!jumping){
+    legL.rotation.x = Math.sin(runCycle)*0.9;
+    legR.rotation.x = Math.sin(runCycle+Math.PI)*0.9;
+    armL.rotation.x = Math.sin(runCycle+Math.PI)*0.7;
+    armR.rotation.x = Math.sin(runCycle)*0.7;
+  } else {
+    legL.rotation.x = -0.6; legR.rotation.x = 0.4;
+    armL.rotation.x = 0.3; armR.rotation.x = -0.3;
+  }
+
+  // camera follow with slight dynamic FOV on jump
+  camera.position.x += (curLaneX*0.4 - (camera.position.x-0)) * 0.08;
+  camera.position.y = 4.4 - (jumping ? 0.25 : 0);
+  camera.lookAt(curLaneX*0.3, 1.6 + (jumping?0.4:0), -10);
+
+  // scroll world
+  groundTiles.forEach(g=>{
+    g.position.z += speed*dt;
+    if(g.position.z > 40) g.position.z -= 120;
+  });
+  grassTiles.forEach(g=>{
+    g.position.z += speed*dt;
+    if(g.position.z > 40) g.position.z -= 120;
+  });
+  laneStrips.forEach(s=>{
+    s.position.z += speed*dt;
+    if(s.position.z > 12) s.position.z -= 100;
+  });
+  wallSets.forEach(w=>{
+    w.position.z += speed*dt;
+    if(w.position.z > 40) w.position.z -= 120;
+  });
+
+  // trees: shift all instance data then push one matrix update (cheap even at 36 instances)
+  const TREE_TOTAL_LENGTH = TREE_SPACING * Math.ceil(TREE_COUNT/2);
+  let treesChanged = false;
+  treeData.forEach(t=>{
+    t.z += speed*dt;
+    if(t.z > 22){ t.z -= TREE_TOTAL_LENGTH; treesChanged = true; }
+  });
+  treeData.forEach((t,i)=>{
+    dummy.position.set(t.x, 0.8*t.scale, t.z);
+    dummy.scale.set(t.scale,t.scale,t.scale);
+    dummy.rotation.y = (t.x*7.3 + t.z*3.1) % 6.28;
+    dummy.updateMatrix();
+    trunkMesh.setMatrixAt(i, dummy.matrix);
+    dummy.position.set(t.x, (1.6+1.1)*t.scale, t.z);
+    dummy.updateMatrix();
+    foliageMesh.setMatrixAt(i, dummy.matrix);
+  });
+  trunkMesh.instanceMatrix.needsUpdate = true;
+  foliageMesh.instanceMatrix.needsUpdate = true;
+
+  // spawn obstacles
+  spawnTimer += dt;
+  spawnInterval = Math.max(0.9, 1.7 - (speed-BASE_SPEED)*0.014);
+  if(spawnTimer > spawnInterval){
+    spawnTimer = 0;
+    spawnObstaclePattern();
+  }
+
+  // move + collide obstacles
+  for(let i=activeObstacles.length-1;i>=0;i--){
+    const o = activeObstacles[i];
+    o.mesh.position.z += speed*dt;
+    o.z = o.mesh.position.z;
+
+    if(o.z > DESPAWN_Z){
+      releaseObstacleMesh(o.mesh);
+      activeObstacles.splice(i,1);
+      continue;
+    }
+
+    // collision window near player — widened for a fairness grace period so
+    // a slightly early/late jump or duck still counts
+    if(Math.abs(o.z - PLAYER_Z) < 1.15 && o.lane === targetLaneIdxAtCollision(curLaneX)){
+      const hit = checkHit(o);
+      if(hit){
+        crashAndEnd();
+        return;
+      }
+    }
+  }
+}
+
+function targetLaneIdxAtCollision(x){
+  // find nearest lane to current x (covers mid-slide edge cases)
+  let best=0, bestD=Infinity;
+  LANES.forEach((lx,i)=>{ const d=Math.abs(lx-x); if(d<bestD){bestD=d;best=i;} });
+  return best;
+}
+
+function checkHit(o){
+  if(o.type===OBSTACLE_TYPES.LOW){
+    return !(jumping && player.position.y > 0.25);
+  }
+  if(o.type===OBSTACLE_TYPES.HIGH){
+    return !ducking;
+  }
+  // BLOCK: any lane presence is a hit (must have already switched lanes earlier)
+  return true;
+}
+
+function crashAndEnd(){
+  flashPower('OOF');
+  endGame();
+}
+
+/* ---------------- pause / resume ---------------- */
+function pauseGame(){
+  gameState = 'paused';
+  screenPause.classList.remove('hidden');
+}
+function resumeGame(){
+  gameState = 'playing';
+  screenPause.classList.add('hidden');
+  clock.getDelta(); // avoid a big dt jump
+}
+
+/* =========================================================================
+   THUMBNAIL CANVAS SIZE
+   ========================================================================= */
+function sizeCanvases(){
+  skeletonCanvas.width = skeletonCanvas.clientWidth;
+  skeletonCanvas.height = skeletonCanvas.clientHeight;
+  thumbCanvas.width = 240; thumbCanvas.height = 180;
+}
+window.addEventListener('resize', sizeCanvases);
+
+/* =========================================================================
+   UI WIRING
+   ========================================================================= */
+$('btnCalibrate').addEventListener('click', async ()=>{
+  screenStart.classList.add('hidden');
+  screenCalib.classList.remove('hidden');
+  gameState = 'calibrating';
+  sizeCanvases();
+  try{
+    await initCamera();
+  }catch(e){ /* fatal screen already shown */ }
+});
+
+$('btnSkip').addEventListener('click', ()=>{
+  input.usingCamera = false;
+  startPlaying();
+});
+
+$('btnStartGame').addEventListener('click', ()=>{
+  if(!calibrated) return;
+  startPlaying();
+});
+
+$('btnRecalibrate').addEventListener('click', ()=>{
+  calibrated = false;
+  goodFramesInRow = 0;
+  $('btnStartGame').disabled = true;
+  $('calibText').textContent = 'Looking for you…';
+});
+
+$('btnResume').addEventListener('click', resumeGame);
+$('btnQuitToMenu').addEventListener('click', ()=>{
+  screenPause.classList.add('hidden');
+  hud.classList.add('hidden');
+  pauseHint.classList.add('hidden');
+  trackerThumb.classList.add('hidden');
+  clearObstacles();
+  gameState = 'start';
+  screenStart.classList.remove('hidden');
+});
+
+$('btnRetry').addEventListener('click', startPlaying);
+$('btnMenu').addEventListener('click', ()=>{
+  screenOver.classList.add('hidden');
+  gameState = 'start';
+  screenStart.classList.remove('hidden');
+});
+$('btnFatalKeyboard').addEventListener('click', ()=>{
+  fatalError.style.display='none';
+  input.usingCamera = false;
+  screenCalib.classList.add('hidden');
+  screenStart.classList.remove('hidden');
+  gameState = 'start';
+});
+
+sizeCanvases();
+animate();
+})();
+</script>
+</body>
+</html>
